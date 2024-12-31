@@ -16,7 +16,7 @@ const DEFAULT_SETTINGS: PluginSettings = {
 
 let cachedResult: RequestUrlResponse;
 
-async function refreshCacheFromImmich(settings: PluginSettings) {
+async function refreshCacheFromImmich(settings: PluginSettings, silent=true) {
 	const url = new URL(settings.immichUrl + '/api/albums/' + settings.immichAlbum);
 	const result = await requestUrl({
 		url: url.toString(),
@@ -26,6 +26,9 @@ async function refreshCacheFromImmich(settings: PluginSettings) {
 		}
 	})	
 	cachedResult = result;
+	if(!silent) {
+		new Notice('Immich album cache completed for album \'' + cachedResult.json['albumName'] + '\'. Found ' + cachedResult.json['assetCount'] + ' assets.');
+	}
 }
 
 export default class ObsidianImmich extends Plugin {
@@ -46,7 +49,8 @@ export default class ObsidianImmich extends Plugin {
 			id: 'force-refresh-album-cache',
 			name: 'Refresh album cache',
 			callback: () => {
-				refreshCacheFromImmich(this.settings);
+				new Notice('Refreshing immich cache.');
+				refreshCacheFromImmich(this.settings, false);
 			}
 		});
 
