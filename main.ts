@@ -116,7 +116,10 @@ class ImageSelectorModal extends Modal {
 				const imgElement = overallDiv.createEl("img");
 				imgElement.src = thumbUrl;
 				imgElement.width = (totalWidth / 2) - 5;
-				imgElement.onclick = () => this.editor.replaceSelection(insertionText);
+				imgElement.onclick = () => {
+					this.editor.replaceSelection(insertionText);
+					overallDiv.setCssStyles({opacity: '0.5'})
+				}
 			}
 			
 		}, {threshold: [0.1]});
