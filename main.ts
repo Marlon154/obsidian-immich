@@ -92,11 +92,13 @@ class ImageSelectorModal extends Modal {
 		// Get the width of the viewport
 		const totalWidth = contentEl.innerWidth;
 
-		const imageDiv = contentEl.createDiv();
+		const imageDiv = contentEl.createDiv({cls: 'row'});
+		const left = imageDiv.createDiv({cls: 'column'});
+		const right = imageDiv.createDiv({cls: 'column'});
 		const bottomDiv = contentEl.createDiv();
 		let observer = new IntersectionObserver(() => {
 			const startIndex = this.page;
-			let endIndex = this.page + 16;
+			let endIndex = this.page + 4;
 			if (endIndex > cachedResult.json['assets'].length) {
 				endIndex = cachedResult.json['assets'].length;
 			}
@@ -110,7 +112,8 @@ class ImageSelectorModal extends Modal {
 				} else if (cachedResult.json['assets'][i]['type'] === "VIDEO") {
 					insertionText = '<video src="' + this.settings.immichUrl + '/api/assets/' + cachedResult.json['assets'][i]['id'] + '/video/playback?key=' + this.settings.immichAlbumKey + '"controls></video>\n';
 				}
-				const imgElement = imageDiv.createEl("img");
+				const overallDiv = ( i & 1 ) ? right.createDiv({cls: 'overallDiv'}) : left.createDiv({cls: 'overallDiv'});
+				const imgElement = overallDiv.createEl("img");
 				imgElement.src = thumbUrl;
 				imgElement.width = (totalWidth / 2) - 5;
 				imgElement.onclick = () => this.editor.replaceSelection(insertionText);
