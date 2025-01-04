@@ -92,13 +92,16 @@ class ImageSelectorModal extends Modal {
 		// Get the width of the viewport
 		const totalWidth = contentEl.innerWidth;
 
-		const imageDiv = contentEl.createDiv({cls: 'row'});
-		const left = imageDiv.createDiv({cls: 'column'});
-		const right = imageDiv.createDiv({cls: 'column'});
-		const bottomDiv = contentEl.createDiv();
+		const row = contentEl.createDiv({cls: 'row'});
+		const leftImageDiv = row.createDiv({cls: 'column'});
+		const rightImageDiv = row.createDiv({cls: 'column'});
+		const left = leftImageDiv.createDiv();
+		const right = rightImageDiv.createDiv();
+		const leftBottom = leftImageDiv.createDiv();
+		const rightBottom = rightImageDiv.createDiv();
 		let observer = new IntersectionObserver(() => {
 			const startIndex = this.page;
-			let endIndex = this.page + 4;
+			let endIndex = this.page + 10;
 			if (endIndex > cachedResult.json['assets'].length) {
 				endIndex = cachedResult.json['assets'].length;
 			}
@@ -123,7 +126,8 @@ class ImageSelectorModal extends Modal {
 			}
 			
 		}, {threshold: [0.1]});
-		observer.observe(bottomDiv);
+		observer.observe(leftBottom);
+		observer.observe(rightBottom);
 	}
 
 	onClose() {
