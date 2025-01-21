@@ -92,9 +92,9 @@ class ImageSelectorModal extends Modal {
 		// Get the width of the viewport
 		const totalWidth = contentEl.innerWidth;
 
-		const row = contentEl.createDiv({cls: 'row'});
-		const leftImageDiv = row.createDiv({cls: 'column'});
-		const rightImageDiv = row.createDiv({cls: 'column'});
+		const row = contentEl.createDiv({cls: 'obsidian-immich-row'});
+		const leftImageDiv = row.createDiv({cls: 'obsidian-immich-column'});
+		const rightImageDiv = row.createDiv({cls: 'obsidian-immich-column'});
 		const left = leftImageDiv.createDiv();
 		const right = rightImageDiv.createDiv();
 		const leftBottom = leftImageDiv.createDiv();
@@ -115,7 +115,7 @@ class ImageSelectorModal extends Modal {
 				} else if (cachedResult.json['assets'][i]['type'] === "VIDEO") {
 					insertionText = '<video src="' + this.settings.immichUrl + '/api/assets/' + cachedResult.json['assets'][i]['id'] + '/video/playback?key=' + this.settings.immichAlbumKey + '"controls></video>\n';
 				}
-				const overallDiv = ( i & 1 ) ? right.createDiv({cls: 'overallDiv'}) : left.createDiv({cls: 'overallDiv'});
+				const overallDiv = ( i & 1 ) ? right.createDiv({cls: 'obsidian-immich-overallDiv'}) : left.createDiv({cls: 'obsidian-immich-overallDiv'});
 				const imgElement = overallDiv.createEl("img");
 				imgElement.src = thumbUrl;
 				imgElement.width = (totalWidth / 2) - 5;

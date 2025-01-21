@@ -1,12 +1,12 @@
-.overallDiv {
+.obsidian-immich-overallDiv {
     position: relative;
 }
-.column {
+.obsidian-immich-column {
     float: left;
     width: 50%;
 } 
 /* Clear floats after the columns */
-.row:after {
+.obsidian-immich-row:after {
     content: "";
     display: table;
     clear: both;
