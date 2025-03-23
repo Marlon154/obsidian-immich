@@ -40,6 +40,18 @@ This assumes you have a working version of [immich](https://github.com/immich-ap
     - Immich Album Share Key: the Key you obtained in step 4.
 
 ## Usage
+
+### Basic usage
+1. Go to the note you want to insert an image/video into. The editor view must be in focus.
 1. Open the command palette in Obsidian (`ctrl/cmd + p` or swipe down on mobile).
-1. Search `Immich`.
-1. Select `Immich: Insert from Immich` and click on the image(s) you want to include in your note.
+1. Search "Immich".
+1. Select `Immich: Insert from album` and click on the image(s) you want to include in your note.
+
+### Available Commands
+The following commands are available for use.
+
+#### Insert from album
+The standard insertion command. Please note you must have an open editor focused to use this command. Brings up the image selection modal.
+
+#### Refresh album cache
+The "Insert from album" command caches some information such as available images/videos, urls, and other metadata when it is first run. If you find that new images or changes are not showing up in the image selection modal, running this command will refresh the caches.
