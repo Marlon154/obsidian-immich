@@ -38,6 +38,7 @@ This assumes you have a working version of [immich](https://github.com/immich-ap
     - Immich API key: the key you generated in step 5.
     - Immich Album ID: the UUID you obtained in step 2.
     - Immich Album Share Key: the Key you obtained in step 4.
+8. Click "Test connection" to confirm connectivity. If any errors appear, you can view them in the console. Open the console using `cmd+option+i` (MacOS) or `ctrl+shift+i` (Windows). 
 
 ## Usage
 
@@ -54,4 +55,4 @@ The following commands are available for use.
 The standard insertion command. Please note you must have an open editor focused to use this command. Brings up the image selection modal.
 
 #### Refresh album cache
-The "Insert from album" command caches some information such as available images/videos, urls, and other metadata when it is first run. If you find that new images or changes are not showing up in the image selection modal, running this command will refresh the caches.
+The "Insert from album" command caches some information such as available images/videos, urls, and other metadata related to the album when it is first run. If you find that new images or changes are not showing up in the image selection modal, running this command will refresh the caches.

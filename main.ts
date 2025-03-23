@@ -16,6 +16,26 @@ const DEFAULT_SETTINGS: PluginSettings = {
 
 let cachedResult: RequestUrlResponse;
 
+async function testConnection(settings: PluginSettings) {
+	new Notice("Testing connection to " + settings.immichUrl)
+	const url = new URL(settings.immichUrl + '/api/server/about');
+	try {
+		const result = await requestUrl({
+			url: url.toString(),
+			headers: {
+				'Accept': 'application/json',
+				'x-api-key': settings.immichApiKey.toString()
+			}
+		})
+		if (result.status == 200) {
+			new Notice("Connection successful")
+		}
+	} catch(exception) {
+		new Notice("Failed to connect to " + settings.immichUrl + " - check the console for additional information.")
+		console.log("Failed connection to " + url + " with error: " + exception)
+	}	
+}
+
 async function refreshCacheFromImmich(settings: PluginSettings, silent=true) {
 	const url = new URL(settings.immichUrl + '/api/albums/' + settings.immichAlbum);
 	const result = await requestUrl({
@@ -184,5 +204,14 @@ class SettingTab extends PluginSettingTab {
 					this.plugin.settings.immichAlbumKey = value;
 					await this.plugin.saveSettings();
 				}));
+		new Setting(containerEl)
+			.setName('Test connection')
+			.setDesc('Validate the connection between obsidian and your immich instance.')
+			.addButton(async (button) => {
+				button.setButtonText("Test connection")
+				button.onClick(async() => {
+					testConnection(this.plugin.settings)
+				})
+			})
 	}
 }
