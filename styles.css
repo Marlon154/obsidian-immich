@@ -1,13 +1,36 @@
+.obsidian-immich-scroll-container {
+    overflow-y: auto;
+}
+
+.obsidian-immich-row {
+    display: flex;
+}
+
+.obsidian-immich-column {
+    flex: 1;
+    min-width: 0;
+}
+
+.obsidian-immich-column-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 4px;
+}
+
 .obsidian-immich-overallDiv {
     position: relative;
 }
-.obsidian-immich-column {
-    float: left;
-    width: 50%;
-} 
-/* Clear floats after the columns */
-.obsidian-immich-row:after {
-    content: "";
-    display: table;
-    clear: both;
-  }
+
+.obsidian-immich-overallDiv img,
+.obsidian-immich-overallDiv video {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.obsidian-immich-loading {
+    text-align: center;
+    padding: 16px;
+    font-size: 12px;
+}

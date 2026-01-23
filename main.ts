@@ -93,13 +93,23 @@ export default class ObsidianImmich extends Plugin {
 class ImageSelectorModal extends Modal {
 	editor: Editor;
 	settings: PluginSettings;
-	page: number;
+	currentPage: number;
+	batchSize: number;
+	loadedAssets: Map<number, HTMLElement>;
+	scrollContainer: HTMLElement | null;
+	isLoading: boolean;
+	scrollTimeout: number | null;
 
 	constructor(app: App, editor: Editor, settings: PluginSettings) {
 		super(app);
 		this.editor = editor;
 		this.settings = settings;
-		this.page = 0;
+		this.currentPage = 0;
+		this.batchSize = 6;
+		this.loadedAssets = new Map();
+		this.scrollContainer = null;
+		this.isLoading = false;
+		this.scrollTimeout = null;
 	}
 
 	async onOpen() {
@@ -109,48 +119,121 @@ class ImageSelectorModal extends Modal {
 			await refreshCacheFromImmich(this.settings);
 		}
 
-		// Get the width of the viewport
 		const totalWidth = contentEl.innerWidth;
+		const totalAssets = cachedResult.json['assets'].length;
 
-		const row = contentEl.createDiv({cls: 'obsidian-immich-row'});
+		// Create scroll container
+		this.scrollContainer = contentEl.createDiv({cls: 'obsidian-immich-scroll-container'});
+		this.scrollContainer.style.maxHeight = '70vh';
+		this.scrollContainer.style.overflowY = 'auto';
+
+		const row = this.scrollContainer.createDiv({cls: 'obsidian-immich-row'});
 		const leftImageDiv = row.createDiv({cls: 'obsidian-immich-column'});
 		const rightImageDiv = row.createDiv({cls: 'obsidian-immich-column'});
-		const left = leftImageDiv.createDiv();
-		const right = rightImageDiv.createDiv();
-		const leftBottom = leftImageDiv.createDiv();
-		const rightBottom = rightImageDiv.createDiv();
-		let observer = new IntersectionObserver(() => {
-			const startIndex = this.page;
-			let endIndex = this.page + 10;
-			if (endIndex > cachedResult.json['assets'].length) {
-				endIndex = cachedResult.json['assets'].length;
+		const left = leftImageDiv.createDiv({cls: 'obsidian-immich-column-content'});
+		const right = rightImageDiv.createDiv({cls: 'obsidian-immich-column-content'});
+
+		// Create loading indicator inside scroll container
+		const loadingDiv = this.scrollContainer.createDiv({cls: 'obsidian-immich-loading'});
+		loadingDiv.setText('Loading images...');
+		loadingDiv.style.display = 'none';
+
+		// Setup scroll listener with throttling
+		this.setupScrollListener(left, right, totalWidth, totalAssets, loadingDiv);
+		
+		// Initial load: load more items to ensure scrollbar appears on large screens
+		const initialBatchSize = Math.max(this.batchSize * 3, 20); // Load at least 20 items initially
+		this.loadBatch(left, right, totalWidth, 0, Math.min(initialBatchSize, totalAssets), loadingDiv, totalAssets);
+	}
+
+	private setupScrollListener(left: HTMLElement, right: HTMLElement, totalWidth: number, totalAssets: number, loadingDiv: HTMLElement) {
+		if (!this.scrollContainer) return;
+
+		this.scrollContainer.addEventListener('scroll', () => {
+			if (this.scrollTimeout) {
+				clearTimeout(this.scrollTimeout);
 			}
-			this.page = endIndex;
-			for (let i = startIndex; i < endIndex; i++) {
-				const thumbUrl = this.settings.immichUrl + '/api/assets/' + cachedResult.json['assets'][i]['id'] + '/thumbnail?size=thumbnail&key=' + this.settings.immichAlbumKey;
-				let insertionText: string;
-				if (cachedResult.json['assets'][i]['type'] === "IMAGE") {
-					const previewUrl = this.settings.immichUrl + '/api/assets/' + cachedResult.json['assets'][i]['id'] + '/thumbnail?size=preview&key=' + this.settings.immichAlbumKey;
-					insertionText = '![](' + previewUrl + ')\n';
-				} else if (cachedResult.json['assets'][i]['type'] === "VIDEO") {
-					insertionText = '<video src="' + this.settings.immichUrl + '/api/assets/' + cachedResult.json['assets'][i]['id'] + '/video/playback?key=' + this.settings.immichAlbumKey + '"controls></video>\n';
-				}
-				const overallDiv = ( i & 1 ) ? right.createDiv({cls: 'obsidian-immich-overallDiv'}) : left.createDiv({cls: 'obsidian-immich-overallDiv'});
-				const imgElement = overallDiv.createEl("img");
-				imgElement.src = thumbUrl;
-				imgElement.width = (totalWidth / 2) - 5;
-				imgElement.onclick = () => {
-					this.editor.replaceSelection(insertionText);
-					overallDiv.setCssStyles({opacity: '0.5'})
-				}
-			}
+
+			this.scrollTimeout = window.setTimeout(() => {
+				this.checkAndLoadMore(left, right, totalWidth, totalAssets, loadingDiv);
+			}, 150); // Throttle to 150ms
+		});
+	}
+
+	private checkAndLoadMore(left: HTMLElement, right: HTMLElement, totalWidth: number, totalAssets: number, loadingDiv: HTMLElement) {
+		if (!this.scrollContainer || this.isLoading || this.currentPage >= totalAssets) {
+			return;
+		}
+
+		const scrollTop = this.scrollContainer.scrollTop;
+		const scrollHeight = this.scrollContainer.scrollHeight;
+		const clientHeight = this.scrollContainer.clientHeight;
+		const scrollPercentage = (scrollTop + clientHeight) / scrollHeight;
+
+		// Load more when user scrolls past 60% or when near bottom
+		if (scrollPercentage > 0.6 || (scrollHeight - (scrollTop + clientHeight) < 300)) {
+			const endIndex = Math.min(this.currentPage + this.batchSize, totalAssets);
+			this.loadBatch(left, right, totalWidth, this.currentPage, endIndex, loadingDiv, totalAssets);
+		}
+	}
+
+	private loadBatch(left: HTMLElement, right: HTMLElement, totalWidth: number, startIndex: number, endIndex: number, loadingDiv: HTMLElement, totalAssets: number) {
+		if (this.isLoading || startIndex >= totalAssets) return;
+		
+		this.isLoading = true;
+		loadingDiv.style.display = 'block';
+
+		const assets = cachedResult.json['assets'];
+
+		for (let i = startIndex; i < endIndex; i++) {
+			if (this.loadedAssets.has(i)) continue;
+
+			const asset = assets[i];
+			const thumbUrl = this.settings.immichUrl + '/api/assets/' + asset['id'] + '/thumbnail?size=thumbnail&key=' + this.settings.immichAlbumKey;
 			
-		}, {threshold: [0.1]});
-		observer.observe(leftBottom);
-		observer.observe(rightBottom);
+			let insertionText: string;
+			if (asset['type'] === "IMAGE") {
+				const previewUrl = this.settings.immichUrl + '/api/assets/' + asset['id'] + '/thumbnail?size=preview&key=' + this.settings.immichAlbumKey;
+				insertionText = '![](' + previewUrl + ')\n';
+			} else if (asset['type'] === "VIDEO") {
+				insertionText = '<video src="' + this.settings.immichUrl + '/api/assets/' + asset['id'] + '/video/playback?key=' + this.settings.immichAlbumKey + '" controls></video>\n';
+			}
+
+			const targetColumn = (i & 1) ? right : left;
+			const overallDiv = targetColumn.createDiv({cls: 'obsidian-immich-overallDiv'});
+			
+			const imgElement = overallDiv.createEl("img");
+			imgElement.src = thumbUrl;
+			imgElement.width = (totalWidth / 2) - 5;
+			imgElement.style.cursor = 'pointer';
+			
+			imgElement.onclick = () => {
+				this.editor.replaceSelection(insertionText);
+				overallDiv.setCssStyles({opacity: '0.5'});
+			};
+
+			imgElement.onerror = () => {
+				overallDiv.setText('Failed to load');
+			};
+
+			this.loadedAssets.set(i, overallDiv);
+		}
+
+		this.currentPage = endIndex;
+
+		setTimeout(() => {
+			this.isLoading = false;
+			if (endIndex >= totalAssets) {
+				loadingDiv.style.display = 'none';
+			}
+		}, 100);
 	}
 
 	onClose() {
+		if (this.scrollTimeout) {
+			clearTimeout(this.scrollTimeout);
+		}
+		this.loadedAssets.clear();
 		const {contentEl} = this;
 		contentEl.empty();
 	}
