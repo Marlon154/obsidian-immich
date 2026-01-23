@@ -1,3 +1,41 @@
+.obsidian-immich-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    margin-bottom: 12px;
+    gap: 12px;
+}
+
+.obsidian-immich-title {
+    font-size: 16px;
+    font-weight: 600;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.obsidian-immich-refresh-button {
+    padding: 6px 12px;
+    border-radius: 4px;
+    background-color: var(--interactive-normal);
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+}
+
+.obsidian-immich-refresh-button:hover {
+    background-color: var(--interactive-hover);
+}
+
+.obsidian-immich-refresh-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .obsidian-immich-scroll-container {
     overflow-y: auto;
 }

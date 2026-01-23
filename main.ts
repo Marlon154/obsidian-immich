@@ -119,11 +119,38 @@ class ImageSelectorModal extends Modal {
 			await refreshCacheFromImmich(this.settings);
 		}
 
+		// Create header with title and refresh button
+		const header = contentEl.createDiv({cls: 'obsidian-immich-header'});
+		
+		const titleDiv = header.createDiv({cls: 'obsidian-immich-title'});
+		titleDiv.setText('Insert from album: ' + (cachedResult.json['albumName'] || 'Select Image'));
+		
+		const refreshButton = header.createEl('button', {
+			text: '\u21bb',
+			cls: 'obsidian-immich-refresh-button'
+		});
+		refreshButton.onclick = async () => {
+			refreshButton.disabled = true;
+			refreshButton.setText('Loading...');
+			try {
+				await refreshCacheFromImmich(this.settings, false);
+				// Reload the modal
+				this.onClose();
+				this.onOpen();
+			} catch (error) {
+				new Notice('Failed to refresh cache');
+				console.error('Refresh failed:', error);
+				refreshButton.disabled = false;
+				refreshButton.setText('\u21bb Refresh');
+			}
+		};
+
 		const totalWidth = contentEl.innerWidth;
 		const totalAssets = cachedResult.json['assets'].length;
 
 		// Create scroll container
 		this.scrollContainer = contentEl.createDiv({cls: 'obsidian-immich-scroll-container'});
+		this.scrollContainer.setAttribute('data-immich-modal-content', 'true');
 		this.scrollContainer.style.maxHeight = '70vh';
 		this.scrollContainer.style.overflowY = 'auto';
 
