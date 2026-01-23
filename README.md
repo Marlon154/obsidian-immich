@@ -14,6 +14,10 @@ This plugin allows users to easily insert images from their self-hosted Immich i
 ## Prerequisites 
 This assumes you have a working version of [immich](https://github.com/immich-app/immich) hosted. It does not necessarily need to be remotely accessible. This decision is left up to the reader.
 
+## Demo
+
+https://github.com/user-attachments/assets/5ade12f7-c959-4991-9d6b-54bcb9569050
+
 ## Setup
 
 **Immich**
