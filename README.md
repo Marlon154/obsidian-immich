@@ -28,6 +28,7 @@ This assumes you have a working version of [immich](https://github.com/immich-ap
    - Expire after: Never.
 4. Copy the share URL. Take note of the key: `https://your-immich-url.com/share/{{KEY}}`
 5. Finally, generate and copy down your API key: `https://your-immich-url.com/user-settings?isOpen=api-keys`
+    - The permissions currently used are: `server.about`, `album.read`. Please note that future updates may change this.
 
 **Obsidian**
 
