@@ -21,9 +21,13 @@ function normalizeImmichUrl(value: string): string {
 }
 
 async function testConnection(settings: PluginSettings) {
-	new Notice("Testing connection to " + settings.immichUrl)
 	const url = new URL(settings.immichUrl + '/api/server/about');
+	console.log('[Immich] Testing connection to:', url.toString());
+	console.log('[Immich] API key configured:', settings.immichApiKey ? '✓ (present)' : '✗ (missing)');
+	
+	new Notice("Testing connection to " + url);
 	try {
+		const startTime = Date.now();
 		const result = await requestUrl({
 			url: url.toString(),
 			headers: {
@@ -31,13 +35,118 @@ async function testConnection(settings: PluginSettings) {
 				'x-api-key': settings.immichApiKey.toString()
 			}
 		})
+		const duration = Date.now() - startTime;
+		
+		console.log('[Immich] Connection response:', {
+			status: result.status,
+			statusText: result.status === 200 ? 'OK' : 'Error',
+			duration: `${duration}ms`,
+			headers: result.headers
+		});
+		
 		if (result.status == 200) {
+			console.log('[Immich] Server info:', result.json);
 			new Notice("Connection successful")
+		} else {
+			console.warn('[Immich] Unexpected status code:', result.status);
 		}
 	} catch(exception) {
+		console.error('[Immich] Connection failed:', {
+			url: url.toString(),
+			error: exception,
+			errorMessage: exception instanceof Error ? exception.message : String(exception),
+			settings: {
+				immichUrl: settings.immichUrl,
+				hasApiKey: !!settings.immichApiKey
+			}
+		});
 		new Notice("Failed to connect to " + settings.immichUrl + " - check the console for additional information.")
-		console.log("Failed connection to " + url + " with error: " + exception)
 	}	
+	const url2 = new URL(settings.immichUrl + '/api/albums/' + settings.immichAlbum);
+	console.log('[Immich] Testing album access with URL:', url2.toString());
+	let albumResult: RequestUrlResponse | null = null;
+	try {
+		const startTime = Date.now();
+		const result = await requestUrl({
+			url: url2.toString(),
+			headers: {
+				'Accept': 'application/json',
+				'x-api-key': settings.immichApiKey.toString()
+			}
+		})
+		const duration = Date.now() - startTime;
+		
+		console.log('[Immich] Album access response:', {
+			status: result.status,
+			statusText: result.status === 200 ? 'OK' : 'Error',
+			duration: `${duration}ms`,
+			headers: result.headers
+		});
+		
+		if (result.status == 200) {
+			albumResult = result;
+			console.log('[Immich] Album info:', result.json);
+			new Notice("Album access successful - found " + result.json['assetCount'] + " assets.");
+		} else {
+			console.warn('[Immich] Unexpected status code when accessing album:', result.status);
+		}
+	} catch(exception) {
+		console.error('[Immich] Album access failed:', {
+			url: url2.toString(),
+			error: exception,
+			errorMessage: exception instanceof Error ? exception.message : String(exception),
+			settings: {
+				immichUrl: settings.immichUrl,
+				hasApiKey: !!settings.immichApiKey,
+				albumId: settings.immichAlbum
+			}
+		});
+		new Notice("Failed to access album - check the console for additional information.")
+	}
+	// If there is an item in the album, also test access to the first asset to verify that the album key is correct
+	if (albumResult && albumResult.json['assets'] && albumResult.json['assets'].length > 0) {
+		const assetId = albumResult.json['assets'][0]['id'];
+		const url3 = new URL(settings.immichUrl + '/api/assets/' + assetId + '/thumbnail?size=thumbnail&key=' + settings.immichAlbumKey);
+		console.log('[Immich] Testing asset access with URL:', url3.toString());
+		try {
+			const startTime = Date.now();
+			const result = await requestUrl({
+				url: url3.toString(),
+				headers: {
+					'Accept': 'application/json',
+					'x-api-key': settings.immichApiKey.toString()
+				}
+			})
+			const duration = Date.now() - startTime;
+			
+			console.log('[Immich] Asset access response:', {
+				status: result.status,
+				statusText: result.status === 200 ? 'OK' : 'Error',
+				duration: `${duration}ms`,
+				headers: result.headers
+			});
+			
+			if (result.status == 200) {
+				console.log('[Immich] Asset access successful');
+				new Notice("Asset access successful - album key is correct.");
+			} else {
+				console.warn('[Immich] Unexpected status code when accessing asset:', result.status);
+			}
+		} catch(exception) {
+			console.error('[Immich] Asset access failed:', {
+				url: url3.toString(),
+				error: exception,
+				errorMessage: exception instanceof Error ? exception.message : String(exception),
+				settings: {
+					immichUrl: settings.immichUrl,
+					hasApiKey: !!settings.immichApiKey,
+					albumId: settings.immichAlbum,
+					albumKey: settings.immichAlbumKey
+				}
+			});
+			new Notice("Failed to access asset - check the console for additional information. This may indicate an issue with the album key.");
+		}
+	}
 }
 
 async function refreshCacheFromImmich(settings: PluginSettings, silent=true) {
