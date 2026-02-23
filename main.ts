@@ -16,6 +16,10 @@ const DEFAULT_SETTINGS: PluginSettings = {
 
 let cachedResult: RequestUrlResponse;
 
+function normalizeImmichUrl(value: string): string {
+	return value.trim().replace(/\/+$/, '');
+}
+
 async function testConnection(settings: PluginSettings) {
 	new Notice("Testing connection to " + settings.immichUrl)
 	const url = new URL(settings.immichUrl + '/api/server/about');
@@ -83,6 +87,7 @@ export default class ObsidianImmich extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.settings.immichUrl = normalizeImmichUrl(this.settings.immichUrl);
 	}
 
 	async saveSettings() {
@@ -284,7 +289,7 @@ class SettingTab extends PluginSettingTab {
 			.addText(text => text
 				.setValue(this.plugin.settings.immichUrl)
 				.onChange(async (value) => {
-					this.plugin.settings.immichUrl = value;
+					this.plugin.settings.immichUrl = normalizeImmichUrl(value);
 					await this.plugin.saveSettings();
 				}));
 		new Setting(containerEl)
