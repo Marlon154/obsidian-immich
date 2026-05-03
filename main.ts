@@ -1,166 +1,266 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, RequestUrlResponse, Setting, requestUrl } from 'obsidian';
+import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+
+// requestUrl goes through Chrome's network stack which blocks private IPs (PNA restriction).
+// Node.js http/https modules bypass this and work fine for local Immich instances.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const http = require('http');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const https = require('https');
+
+interface NodeResponse {
+	status: number;
+	json: any;
+}
+
+function nodeRequest(url: string, options: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<NodeResponse> {
+	return new Promise((resolve, reject) => {
+		const parsed = new URL(url);
+		const transport = parsed.protocol === 'https:' ? https : http;
+		const req = transport.request({
+			hostname: parsed.hostname,
+			port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+			path: parsed.pathname + parsed.search,
+			method: options.method || 'GET',
+			headers: options.headers || {}
+		}, (res: any) => {
+			let data = '';
+			res.on('data', (chunk: string) => { data += chunk; });
+			res.on('end', () => {
+				try { resolve({ status: res.statusCode, json: JSON.parse(data) }); }
+				catch { resolve({ status: res.statusCode, json: null }); }
+			});
+		});
+		req.on('error', reject);
+		if (options.body) req.write(options.body);
+		req.end();
+	});
+}
 
 interface PluginSettings {
 	immichUrl: string;
 	immichApiKey: string;
 	immichAlbum: string;
-	immichAlbumKey: string;
+	insertMode: 'url' | 'codeblock';
 }
 
 const DEFAULT_SETTINGS: PluginSettings = {
 	immichUrl: '',
 	immichApiKey: '',
 	immichAlbum: '',
-	immichAlbumKey: ''
+	insertMode: 'codeblock',
 }
-
-let cachedResult: RequestUrlResponse;
 
 function normalizeImmichUrl(value: string): string {
 	return value.trim().replace(/\/+$/, '');
 }
 
-async function testConnection(settings: PluginSettings) {
-	const url = new URL(settings.immichUrl + '/api/server/about');
-	console.log('[Immich] Testing connection to:', url.toString());
-	console.log('[Immich] API key configured:', settings.immichApiKey ? '✓ (present)' : '✗ (missing)');
-	
-	new Notice("Testing connection to " + url);
-	try {
-		const startTime = Date.now();
-		const result = await requestUrl({
-			url: url.toString(),
-			headers: {
-				'Accept': 'application/json',
-				'x-api-key': settings.immichApiKey.toString()
-			}
-		})
-		const duration = Date.now() - startTime;
-		
-		console.log('[Immich] Connection response:', {
-			status: result.status,
-			statusText: result.status === 200 ? 'OK' : 'Error',
-			duration: `${duration}ms`,
-			headers: result.headers
-		});
-		
-		if (result.status == 200) {
-			console.log('[Immich] Server info:', result.json);
-			new Notice("Connection successful")
-		} else {
-			console.warn('[Immich] Unexpected status code:', result.status);
-		}
-	} catch(exception) {
-		console.error('[Immich] Connection failed:', {
-			url: url.toString(),
-			error: exception,
-			errorMessage: exception instanceof Error ? exception.message : String(exception),
-			settings: {
-				immichUrl: settings.immichUrl,
-				hasApiKey: !!settings.immichApiKey
-			}
-		});
-		new Notice("Failed to connect to " + settings.immichUrl + " - check the console for additional information.")
-	}	
-	const url2 = new URL(settings.immichUrl + '/api/albums/' + settings.immichAlbum);
-	console.log('[Immich] Testing album access with URL:', url2.toString());
-	let albumResult: RequestUrlResponse | null = null;
-	try {
-		const startTime = Date.now();
-		const result = await requestUrl({
-			url: url2.toString(),
-			headers: {
-				'Accept': 'application/json',
-				'x-api-key': settings.immichApiKey.toString()
-			}
-		})
-		const duration = Date.now() - startTime;
-		
-		console.log('[Immich] Album access response:', {
-			status: result.status,
-			statusText: result.status === 200 ? 'OK' : 'Error',
-			duration: `${duration}ms`,
-			headers: result.headers
-		});
-		
-		if (result.status == 200) {
-			albumResult = result;
-			console.log('[Immich] Album info:', result.json);
-			new Notice("Album access successful - found " + result.json['assetCount'] + " assets.");
-		} else {
-			console.warn('[Immich] Unexpected status code when accessing album:', result.status);
-		}
-	} catch(exception) {
-		console.error('[Immich] Album access failed:', {
-			url: url2.toString(),
-			error: exception,
-			errorMessage: exception instanceof Error ? exception.message : String(exception),
-			settings: {
-				immichUrl: settings.immichUrl,
-				hasApiKey: !!settings.immichApiKey,
-				albumId: settings.immichAlbum
-			}
-		});
-		new Notice("Failed to access album - check the console for additional information.")
-	}
-	// If there is an item in the album, also test access to the first asset to verify that the album key is correct
-	if (albumResult && albumResult.json['assets'] && albumResult.json['assets'].length > 0) {
-		const assetId = albumResult.json['assets'][0]['id'];
-		const url3 = new URL(settings.immichUrl + '/api/assets/' + assetId + '/thumbnail?size=thumbnail&key=' + settings.immichAlbumKey);
-		console.log('[Immich] Testing asset access with URL:', url3.toString());
-		try {
-			const startTime = Date.now();
-			const result = await requestUrl({
-				url: url3.toString(),
-				headers: {
-					'Accept': 'application/json',
-					'x-api-key': settings.immichApiKey.toString()
-				}
-			})
-			const duration = Date.now() - startTime;
-			
-			console.log('[Immich] Asset access response:', {
-				status: result.status,
-				statusText: result.status === 200 ? 'OK' : 'Error',
-				duration: `${duration}ms`,
-				headers: result.headers
-			});
-			
-			if (result.status == 200) {
-				console.log('[Immich] Asset access successful');
-				new Notice("Asset access successful - album key is correct.");
-			} else {
-				console.warn('[Immich] Unexpected status code when accessing asset:', result.status);
-			}
-		} catch(exception) {
-			console.error('[Immich] Asset access failed:', {
-				url: url3.toString(),
-				error: exception,
-				errorMessage: exception instanceof Error ? exception.message : String(exception),
-				settings: {
-					immichUrl: settings.immichUrl,
-					hasApiKey: !!settings.immichApiKey,
-					albumId: settings.immichAlbum,
-					albumKey: settings.immichAlbumKey
-				}
-			});
-			new Notice("Failed to access asset - check the console for additional information. This may indicate an issue with the album key.");
-		}
-	}
+interface AssetEntry {
+	id: string;
+	type: string;
 }
 
-async function refreshCacheFromImmich(settings: PluginSettings, silent=true) {
-	const url = new URL(settings.immichUrl + '/api/albums/' + settings.immichAlbum);
-	const result = await requestUrl({
-		url: url.toString(),
+function parseImmichBlock(source: string): AssetEntry[] {
+	return source.trim().split('\n')
+		.map(l => l.trim())
+		.filter(l => l.length > 0)
+		.map(l => {
+			const [id, type] = l.split(/\s+/);
+			return { id, type: (type || 'IMAGE').toUpperCase() };
+		});
+}
+
+function buildFullUrl(entry: AssetEntry, settings: PluginSettings): string {
+	const base = settings.immichUrl + '/api/assets/' + entry.id;
+	if (entry.type === 'VIDEO') {
+		return '<video src="' + base + '/video/playback?apiKey=' + settings.immichApiKey + '" controls></video>';
+	}
+	return '![](' + base + '/thumbnail?size=preview&apiKey=' + settings.immichApiKey + ')';
+}
+
+function buildCodeblock(entries: AssetEntry[]): string {
+	const lines = entries.map(e => e.id + ' ' + e.type).join('\n');
+	return '```immich\n' + lines + '\n```';
+}
+
+// Converts all full Immich asset URLs in a note to immich code blocks.
+// Matches any host so it works even if the configured URL changed.
+function urlsToCodeblocks(content: string): string {
+	content = content.replace(
+		/!\[[^\]]*\]\(https?:\/\/[^/]+\/api\/assets\/([0-9a-f-]+)\/thumbnail\?[^)]*\)/g,
+		(_, id) => buildCodeblock([{ id, type: 'IMAGE' }])
+	);
+	content = content.replace(
+		/<video\s+src="https?:\/\/[^/]+\/api\/assets\/([0-9a-f-]+)\/video\/playback\?[^"]*"\s*controls><\/video>/g,
+		(_, id) => buildCodeblock([{ id, type: 'VIDEO' }])
+	);
+	return content;
+}
+
+// Converts all immich code blocks in a note to full URLs using current settings.
+function codeblocksToUrls(content: string, settings: PluginSettings): string {
+	return content.replace(
+		/```immich\n([\s\S]*?)```/g,
+		(_, blockContent) => {
+			const entries = parseImmichBlock(blockContent);
+			return entries.map(e => buildFullUrl(e, settings)).join('\n');
+		}
+	);
+}
+
+function addOpenButton(container: HTMLElement, url: string) {
+	const btn = container.createEl('a', { cls: 'immich-open-btn' });
+	btn.href = url;
+	btn.target = '_blank';
+	btn.rel = 'noopener';
+	btn.title = 'Open in Immich';
+	// external link icon (↗)
+	btn.createSvg('svg', { attr: { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' } }, svg => {
+		svg.createSvg('line', { attr: { x1: '7', y1: '17', x2: '17', y2: '7' } });
+		svg.createSvg('polyline', { attr: { points: '7 7 17 7 17 17' } });
+	});
+}
+
+function renderSingleEmbed(el: HTMLElement, entry: AssetEntry, settings: PluginSettings) {
+	const base = settings.immichUrl + '/api/assets/' + entry.id;
+	const wrapper = el.createDiv({ cls: 'immich-embed-wrapper' });
+	if (entry.type === 'VIDEO') {
+		const video = wrapper.createEl('video', { cls: 'immich-embed-video' });
+		video.src = base + '/video/playback?apiKey=' + settings.immichApiKey;
+		video.controls = true;
+	} else {
+		const img = wrapper.createEl('img', { cls: 'immich-embed-img' });
+		img.src = base + '/thumbnail?size=preview&apiKey=' + settings.immichApiKey;
+	}
+	addOpenButton(wrapper, settings.immichUrl + '/photos/' + entry.id);
+}
+
+function renderSlider(el: HTMLElement, entries: AssetEntry[], settings: PluginSettings) {
+	const container = el.createDiv({ cls: 'immich-slider' });
+	let current = 0;
+
+	const track = container.createDiv({ cls: 'immich-slider-track' });
+	const slides: HTMLElement[] = entries.map((entry, i) => {
+		const slide = track.createDiv({ cls: 'immich-slide' + (i === 0 ? ' immich-slide-active' : '') });
+		const base = settings.immichUrl + '/api/assets/' + entry.id;
+		if (entry.type === 'VIDEO') {
+			const video = slide.createEl('video', { cls: 'immich-embed-video' });
+			video.src = base + '/video/playback?apiKey=' + settings.immichApiKey;
+			video.controls = true;
+		} else {
+			const img = slide.createEl('img', { cls: 'immich-embed-img' });
+			img.src = base + '/thumbnail?size=preview&apiKey=' + settings.immichApiKey;
+		}
+		addOpenButton(slide, settings.immichUrl + '/photos/' + entry.id);
+		return slide;
+	});
+
+	const controls = container.createDiv({ cls: 'immich-slider-controls' });
+	const prev = controls.createEl('button', { cls: 'immich-slider-btn', text: '‹' });
+	const dotsEl = controls.createDiv({ cls: 'immich-slider-dots' });
+	const dotEls = entries.map((_, i) => {
+		const dot = dotsEl.createDiv({ cls: 'immich-dot' + (i === 0 ? ' immich-dot-active' : '') });
+		dot.onclick = () => goTo(i);
+		return dot;
+	});
+	const next = controls.createEl('button', { cls: 'immich-slider-btn', text: '›' });
+
+	const counter = controls.createDiv({ cls: 'immich-slider-counter' });
+	counter.setText('1 / ' + entries.length);
+
+	function goTo(index: number) {
+		slides[current].removeClass('immich-slide-active');
+		dotEls[current].removeClass('immich-dot-active');
+		current = (index + entries.length) % entries.length;
+		slides[current].addClass('immich-slide-active');
+		dotEls[current].addClass('immich-dot-active');
+		counter.setText((current + 1) + ' / ' + entries.length);
+	}
+
+	prev.onclick = () => goTo(current - 1);
+	next.onclick = () => goTo(current + 1);
+}
+
+interface SearchResult {
+	items: any[];
+	nextPage: number | null;
+	total: number;
+}
+
+async function searchAssets(
+	settings: PluginSettings,
+	query: string,
+	isSmart: boolean,
+	pageSize: number,
+	dateFrom: string,
+	dateTo: string,
+	page: number
+): Promise<SearchResult> {
+	const useSmartSearch = isSmart && query.trim().length > 0;
+	const endpoint = useSmartSearch ? '/api/search/smart' : '/api/search/metadata';
+
+	const body: Record<string, any> = { size: pageSize, page };
+	if (query.trim()) body['query'] = query.trim();
+	if (dateFrom) body['takenAfter'] = new Date(dateFrom).toISOString();
+	if (dateTo) body['takenBefore'] = new Date(dateTo + 'T23:59:59').toISOString();
+	if (settings.immichAlbum && !useSmartSearch) body['albumIds'] = [settings.immichAlbum];
+
+	const result = await nodeRequest(settings.immichUrl + endpoint, {
+		method: 'POST',
 		headers: {
 			'Accept': 'application/json',
-			'x-api-key': settings.immichApiKey.toString()
+			'Content-Type': 'application/json',
+			'x-api-key': settings.immichApiKey
+		},
+		body: JSON.stringify(body)
+	});
+
+	const assets = result.json['assets'];
+	return {
+		items: assets['items'] || [],
+		nextPage: assets['nextPage'] ? parseInt(assets['nextPage']) : null,
+		total: assets['total'] ?? assets['count'] ?? 0
+	};
+}
+
+async function testConnection(settings: PluginSettings) {
+	new Notice('Testing connection...');
+	try {
+		const result = await nodeRequest(settings.immichUrl + '/api/server/about', {
+			headers: { 'Accept': 'application/json', 'x-api-key': settings.immichApiKey }
+		});
+		if (result.status === 200) {
+			new Notice('Connection successful');
+		} else {
+			new Notice('Unexpected status: ' + result.status);
+			return;
 		}
-	})	
-	cachedResult = result;
-	if(!silent) {
-		new Notice('Immich album cache completed for album \'' + cachedResult.json['albumName'] + '\'. Found ' + cachedResult.json['assetCount'] + ' assets.');
+	} catch (e) {
+		new Notice('Failed to connect — check console for details.');
+		console.error('[Immich] Connection failed:', e);
+		return;
+	}
+
+	try {
+		const search = await searchAssets(settings, '', false, 1, '', '', 1);
+		new Notice('API key valid — library contains ' + search.total + ' assets.');
+	} catch (e) {
+		new Notice('API key invalid or search failed — check console.');
+		console.error('[Immich] Search test failed:', e);
+		return;
+	}
+
+	if (settings.immichAlbum) {
+		try {
+			const result = await nodeRequest(settings.immichUrl + '/api/albums/' + settings.immichAlbum, {
+				headers: { 'Accept': 'application/json', 'x-api-key': settings.immichApiKey }
+			});
+			if (result.status === 200) {
+				new Notice('Album found: "' + result.json['albumName'] + '" (' + result.json['assetCount'] + ' assets).');
+			}
+		} catch (e) {
+			new Notice('Album ID not found — check console.');
+			console.error('[Immich] Album access failed:', e);
+		}
 	}
 }
 
@@ -170,29 +270,61 @@ export default class ObsidianImmich extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
+		this.registerMarkdownCodeBlockProcessor('immich', (source, el) => {
+			const entries = parseImmichBlock(source);
+			if (entries.length === 0) {
+				el.createEl('em', { text: 'No assets specified.' });
+				return;
+			}
+			if (entries.length === 1) {
+				renderSingleEmbed(el, entries[0], this.settings);
+			} else {
+				renderSlider(el, entries, this.settings);
+			}
+		});
+
 		this.addCommand({
-			id: 'insert-from-album',
-			name: 'Insert from album',
+			id: 'insert-from-immich',
+			name: 'Insert from Immich',
 			editorCallback: (editor: Editor) => {
 				new ImageSelectorModal(this.app, editor, this.settings).open();
 			}
 		});
- 
+
 		this.addCommand({
-			id: 'force-refresh-album-cache',
-			name: 'Refresh album cache',
-			callback: () => {
-				new Notice('Refreshing immich cache.');
-				refreshCacheFromImmich(this.settings, false);
+			id: 'convert-to-codeblocks',
+			name: 'Convert note: Immich URLs → code blocks',
+			editorCallback: (editor: Editor) => {
+				const before = editor.getValue();
+				const after = urlsToCodeblocks(before);
+				if (after !== before) {
+					editor.setValue(after);
+					new Notice('Converted Immich URLs to code blocks.');
+				} else {
+					new Notice('No Immich URLs found in this note.');
+				}
 			}
 		});
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
+		this.addCommand({
+			id: 'convert-to-urls',
+			name: 'Convert note: Immich code blocks → URLs',
+			editorCallback: (editor: Editor) => {
+				const before = editor.getValue();
+				const after = codeblocksToUrls(before, this.settings);
+				if (after !== before) {
+					editor.setValue(after);
+					new Notice('Converted code blocks to Immich URLs.');
+				} else {
+					new Notice('No Immich code blocks found in this note.');
+				}
+			}
+		});
+
 		this.addSettingTab(new SettingTab(this.app, this));
 	}
 
-	onunload() {
-	}
+	onunload() {}
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -207,176 +339,252 @@ export default class ObsidianImmich extends Plugin {
 class ImageSelectorModal extends Modal {
 	editor: Editor;
 	settings: PluginSettings;
-	currentPage: number;
-	batchSize: number;
-	loadedAssets: Map<number, HTMLElement>;
-	scrollContainer: HTMLElement | null;
-	isLoading: boolean;
-	scrollTimeout: number | null;
+
+	query = '';
+	isSmart = false;
+	dateFrom = '';
+	dateTo = '';
+
+	currentPage = 1;
+	hasMore = true;
+	isLoading = false;
+	loadedCount = 0;
+	totalWidth = 0;
+	pageSize = 20;
+
+	selectedAssets: Map<string, AssetEntry> = new Map();
+	multiSelect = false;
+
+	scrollContainer: HTMLElement | null = null;
+	leftColumn: HTMLElement | null = null;
+	rightColumn: HTMLElement | null = null;
+	loadingDiv: HTMLElement | null = null;
+	countDiv: HTMLElement | null = null;
+	insertBtn: HTMLButtonElement | null = null;
+	multiSelectBtn: HTMLButtonElement | null = null;
+
+	searchTimeout: number | null = null;
+	scrollTimeout: number | null = null;
 
 	constructor(app: App, editor: Editor, settings: PluginSettings) {
 		super(app);
 		this.editor = editor;
 		this.settings = settings;
-		this.currentPage = 0;
-		this.batchSize = 6;
-		this.loadedAssets = new Map();
-		this.scrollContainer = null;
-		this.isLoading = false;
-		this.scrollTimeout = null;
 	}
 
 	async onOpen() {
-		const {contentEl} = this;
+		const { contentEl } = this;
+		this.modalEl.addClass('obsidian-immich-modal');
+		this.totalWidth = contentEl.innerWidth;
+		this.buildUI(contentEl);
+		await this.fetchNextPage();
+	}
 
-		if (cachedResult == null) {
-			await refreshCacheFromImmich(this.settings);
-		}
+	private buildUI(contentEl: HTMLElement) {
+		const header = contentEl.createDiv({ cls: 'obsidian-immich-header' });
+		header.createDiv({ cls: 'obsidian-immich-title' }).setText('Insert from Immich');
+		this.countDiv = header.createDiv({ cls: 'obsidian-immich-count' });
 
-		// Create header with title and refresh button
-		const header = contentEl.createDiv({cls: 'obsidian-immich-header'});
-		
-		const titleDiv = header.createDiv({cls: 'obsidian-immich-title'});
-		titleDiv.setText('Insert from album: ' + (cachedResult.json['albumName'] || 'Select Image'));
-		
-		const refreshButton = header.createEl('button', {
-			text: '\u21bb',
-			cls: 'obsidian-immich-refresh-button'
-		});
-		refreshButton.onclick = async () => {
-			refreshButton.disabled = true;
-			refreshButton.setText('Loading...');
-			try {
-				await refreshCacheFromImmich(this.settings, false);
-				// Reload the modal
-				this.onClose();
-				this.onOpen();
-			} catch (error) {
-				new Notice('Failed to refresh cache');
-				console.error('Refresh failed:', error);
-				refreshButton.disabled = false;
-				refreshButton.setText('\u21bb Refresh');
-			}
+		const searchBar = contentEl.createDiv({ cls: 'obsidian-immich-search-bar' });
+
+		const searchInput = searchBar.createEl('input', { cls: 'obsidian-immich-search-input' });
+		searchInput.type = 'text';
+		searchInput.placeholder = 'Search images...';
+		searchInput.oninput = () => {
+			if (this.searchTimeout) clearTimeout(this.searchTimeout);
+			this.searchTimeout = window.setTimeout(() => {
+				this.query = searchInput.value;
+				this.resetAndSearch();
+			}, 300);
 		};
 
-		const totalWidth = contentEl.innerWidth;
-		const totalAssets = cachedResult.json['assets'].length;
+		const toggleBtn = searchBar.createEl('button', {
+			text: 'Metadata',
+			cls: 'obsidian-immich-toggle-btn'
+		});
+		toggleBtn.onclick = () => {
+			this.isSmart = !this.isSmart;
+			toggleBtn.setText(this.isSmart ? 'Smart' : 'Metadata');
+			toggleBtn.toggleClass('obsidian-immich-toggle-active', this.isSmart);
+			this.resetAndSearch();
+		};
 
-		// Create scroll container
-		this.scrollContainer = contentEl.createDiv({cls: 'obsidian-immich-scroll-container'});
-		this.scrollContainer.setAttribute('data-immich-modal-content', 'true');
-		this.scrollContainer.style.maxHeight = '70vh';
+		const dateRow = contentEl.createDiv({ cls: 'obsidian-immich-date-row' });
+		dateRow.createEl('label', { text: 'From:' });
+		const fromInput = dateRow.createEl('input', { cls: 'obsidian-immich-date-input' });
+		fromInput.type = 'date';
+		fromInput.onchange = () => { this.dateFrom = fromInput.value; this.resetAndSearch(); };
+
+		dateRow.createEl('label', { text: 'To:' });
+		const toInput = dateRow.createEl('input', { cls: 'obsidian-immich-date-input' });
+		toInput.type = 'date';
+		toInput.onchange = () => { this.dateTo = toInput.value; this.resetAndSearch(); };
+
+		this.scrollContainer = contentEl.createDiv({ cls: 'obsidian-immich-scroll-container' });
+		this.scrollContainer.style.maxHeight = '55vh';
 		this.scrollContainer.style.overflowY = 'auto';
 
-		const row = this.scrollContainer.createDiv({cls: 'obsidian-immich-row'});
-		const leftImageDiv = row.createDiv({cls: 'obsidian-immich-column'});
-		const rightImageDiv = row.createDiv({cls: 'obsidian-immich-column'});
-		const left = leftImageDiv.createDiv({cls: 'obsidian-immich-column-content'});
-		const right = rightImageDiv.createDiv({cls: 'obsidian-immich-column-content'});
+		const row = this.scrollContainer.createDiv({ cls: 'obsidian-immich-row' });
+		this.leftColumn = row.createDiv({ cls: 'obsidian-immich-column' }).createDiv({ cls: 'obsidian-immich-column-content' });
+		this.rightColumn = row.createDiv({ cls: 'obsidian-immich-column' }).createDiv({ cls: 'obsidian-immich-column-content' });
 
-		// Create loading indicator inside scroll container
-		const loadingDiv = this.scrollContainer.createDiv({cls: 'obsidian-immich-loading'});
-		loadingDiv.setText('Loading images...');
-		loadingDiv.style.display = 'none';
-
-		// Setup scroll listener with throttling
-		this.setupScrollListener(left, right, totalWidth, totalAssets, loadingDiv);
-		
-		// Initial load: load more items to ensure scrollbar appears on large screens
-		const initialBatchSize = Math.max(this.batchSize * 3, 20); // Load at least 20 items initially
-		this.loadBatch(left, right, totalWidth, 0, Math.min(initialBatchSize, totalAssets), loadingDiv, totalAssets);
-	}
-
-	private setupScrollListener(left: HTMLElement, right: HTMLElement, totalWidth: number, totalAssets: number, loadingDiv: HTMLElement) {
-		if (!this.scrollContainer) return;
+		this.loadingDiv = this.scrollContainer.createDiv({ cls: 'obsidian-immich-loading' });
+		this.loadingDiv.setText('Loading...');
+		this.loadingDiv.style.display = 'none';
 
 		this.scrollContainer.addEventListener('scroll', () => {
-			if (this.scrollTimeout) {
-				clearTimeout(this.scrollTimeout);
-			}
-
-			this.scrollTimeout = window.setTimeout(() => {
-				this.checkAndLoadMore(left, right, totalWidth, totalAssets, loadingDiv);
-			}, 150); // Throttle to 150ms
+			if (this.scrollTimeout) clearTimeout(this.scrollTimeout);
+			this.scrollTimeout = window.setTimeout(() => this.checkAndLoadMore(), 150);
 		});
+
+		const footer = contentEl.createDiv({ cls: 'obsidian-immich-footer' });
+		const modeLabel = footer.createEl('span', { cls: 'obsidian-immich-mode-label' });
+		modeLabel.setText(this.settings.insertMode === 'codeblock' ? 'Code block' : 'Full URL');
+
+		const footerRight = footer.createDiv({ cls: 'obsidian-immich-footer-right' });
+
+		this.insertBtn = footerRight.createEl('button', { cls: 'obsidian-immich-insert-btn' });
+		this.insertBtn.setText('Insert (0)');
+		this.insertBtn.disabled = true;
+		this.insertBtn.style.display = 'none';
+		this.insertBtn.onclick = () => this.insertSelected();
+
+		this.multiSelectBtn = footerRight.createEl('button', { cls: 'obsidian-immich-toggle-btn' });
+		this.multiSelectBtn.setText('Select multiple');
+		this.multiSelectBtn.onclick = () => this.toggleMultiSelect();
 	}
 
-	private checkAndLoadMore(left: HTMLElement, right: HTMLElement, totalWidth: number, totalAssets: number, loadingDiv: HTMLElement) {
-		if (!this.scrollContainer || this.isLoading || this.currentPage >= totalAssets) {
-			return;
+	private toggleMultiSelect() {
+		this.multiSelect = !this.multiSelect;
+		if (this.multiSelectBtn) {
+			this.multiSelectBtn.toggleClass('obsidian-immich-toggle-active', this.multiSelect);
 		}
-
-		const scrollTop = this.scrollContainer.scrollTop;
-		const scrollHeight = this.scrollContainer.scrollHeight;
-		const clientHeight = this.scrollContainer.clientHeight;
-		const scrollPercentage = (scrollTop + clientHeight) / scrollHeight;
-
-		// Load more when user scrolls past 60% or when near bottom
-		if (scrollPercentage > 0.6 || (scrollHeight - (scrollTop + clientHeight) < 300)) {
-			const endIndex = Math.min(this.currentPage + this.batchSize, totalAssets);
-			this.loadBatch(left, right, totalWidth, this.currentPage, endIndex, loadingDiv, totalAssets);
+		if (!this.multiSelect) {
+			// clear selection when disabling
+			this.selectedAssets.clear();
+			this.scrollContainer?.querySelectorAll('.obsidian-immich-selected')
+				.forEach(el => el.removeClass('obsidian-immich-selected'));
+			this.updateInsertBtn();
+		}
+		if (this.insertBtn) {
+			this.insertBtn.style.display = this.multiSelect ? '' : 'none';
 		}
 	}
 
-	private loadBatch(left: HTMLElement, right: HTMLElement, totalWidth: number, startIndex: number, endIndex: number, loadingDiv: HTMLElement, totalAssets: number) {
-		if (this.isLoading || startIndex >= totalAssets) return;
-		
+	private updateInsertBtn() {
+		if (!this.insertBtn) return;
+		const n = this.selectedAssets.size;
+		this.insertBtn.setText('Insert (' + n + ')');
+		this.insertBtn.disabled = n === 0;
+	}
+
+	private insertSelected() {
+		const entries = Array.from(this.selectedAssets.values());
+		if (entries.length === 0) return;
+
+		let text: string;
+		if (this.settings.insertMode === 'url') {
+			text = entries.map(e => buildFullUrl(e, this.settings)).join('\n') + '\n';
+		} else {
+			text = buildCodeblock(entries) + '\n';
+		}
+
+		this.editor.replaceSelection(text);
+		this.close();
+	}
+
+	private async resetAndSearch() {
+		this.currentPage = 1;
+		this.hasMore = true;
+		this.loadedCount = 0;
+		this.selectedAssets.clear();
+		if (this.multiSelect) this.updateInsertBtn();
+		if (this.leftColumn) this.leftColumn.empty();
+		if (this.rightColumn) this.rightColumn.empty();
+		await this.fetchNextPage();
+	}
+
+	private checkAndLoadMore() {
+		if (!this.scrollContainer || this.isLoading || !this.hasMore) return;
+		const { scrollTop, scrollHeight, clientHeight } = this.scrollContainer;
+		const pct = (scrollTop + clientHeight) / scrollHeight;
+		if (pct > 0.6 || scrollHeight - (scrollTop + clientHeight) < 300) {
+			this.fetchNextPage();
+		}
+	}
+
+	private async fetchNextPage() {
+		if (this.isLoading || !this.hasMore) return;
 		this.isLoading = true;
-		loadingDiv.style.display = 'block';
+		if (this.loadingDiv) this.loadingDiv.style.display = 'block';
 
-		const assets = cachedResult.json['assets'];
+		try {
+			const result = await searchAssets(
+				this.settings, this.query, this.isSmart,
+				this.pageSize, this.dateFrom, this.dateTo, this.currentPage
+			);
 
-		for (let i = startIndex; i < endIndex; i++) {
-			if (this.loadedAssets.has(i)) continue;
+			if (this.countDiv) this.countDiv.setText(result.total + ' assets');
+			this.hasMore = result.nextPage !== null;
+			if (result.nextPage !== null) this.currentPage = result.nextPage;
 
-			const asset = assets[i];
-			const thumbUrl = this.settings.immichUrl + '/api/assets/' + asset['id'] + '/thumbnail?size=thumbnail&key=' + this.settings.immichAlbumKey;
-			
-			let insertionText: string;
-			if (asset['type'] === "IMAGE") {
-				const previewUrl = this.settings.immichUrl + '/api/assets/' + asset['id'] + '/thumbnail?size=preview&key=' + this.settings.immichAlbumKey;
-				insertionText = '![](' + previewUrl + ')\n';
-			} else if (asset['type'] === "VIDEO") {
-				insertionText = '<video src="' + this.settings.immichUrl + '/api/assets/' + asset['id'] + '/video/playback?key=' + this.settings.immichAlbumKey + '" controls></video>\n';
-			}
-
-			const targetColumn = (i & 1) ? right : left;
-			const overallDiv = targetColumn.createDiv({cls: 'obsidian-immich-overallDiv'});
-			
-			const imgElement = overallDiv.createEl("img");
-			imgElement.src = thumbUrl;
-			imgElement.width = (totalWidth / 2) - 5;
-			imgElement.style.cursor = 'pointer';
-			
-			imgElement.onclick = () => {
-				this.editor.replaceSelection(insertionText);
-				overallDiv.setCssStyles({opacity: '0.5'});
-			};
-
-			imgElement.onerror = () => {
-				overallDiv.setText('Failed to load');
-			};
-
-			this.loadedAssets.set(i, overallDiv);
-		}
-
-		this.currentPage = endIndex;
-
-		setTimeout(() => {
+			for (const asset of result.items) this.renderAsset(asset);
+		} catch (e) {
+			new Notice('Failed to load images — check console.');
+			console.error('[Immich] Search failed:', e);
+		} finally {
 			this.isLoading = false;
-			if (endIndex >= totalAssets) {
-				loadingDiv.style.display = 'none';
+			if (this.loadingDiv) this.loadingDiv.style.display = 'none';
+		}
+	}
+
+	private renderAsset(asset: any) {
+		if (!this.leftColumn || !this.rightColumn) return;
+
+		const id: string = asset['id'];
+		const type: string = asset['type'];
+		if (type !== 'IMAGE' && type !== 'VIDEO') return;
+
+		const apiKey = this.settings.immichApiKey;
+		const base = this.settings.immichUrl + '/api/assets/' + id;
+		const thumbUrl = base + '/thumbnail?size=thumbnail&apiKey=' + apiKey;
+
+		const col = (this.loadedCount & 1) ? this.rightColumn : this.leftColumn;
+		const wrapper = col.createDiv({ cls: 'obsidian-immich-overallDiv' });
+
+		const img = wrapper.createEl('img');
+		img.src = thumbUrl;
+		img.width = (this.totalWidth / 2) - 5;
+		img.style.cursor = 'pointer';
+
+		img.onclick = () => {
+			if (!this.multiSelect) {
+				const entry = { id, type };
+				const text = this.settings.insertMode === 'url'
+					? buildFullUrl(entry, this.settings) + '\n'
+					: buildCodeblock([entry]) + '\n';
+				this.editor.replaceSelection(text);
+				this.close();
+			} else {
+				if (this.selectedAssets.has(id)) {
+					this.selectedAssets.delete(id);
+					wrapper.removeClass('obsidian-immich-selected');
+				} else {
+					this.selectedAssets.set(id, { id, type });
+					wrapper.addClass('obsidian-immich-selected');
+				}
+				this.updateInsertBtn();
 			}
-		}, 100);
+		};
+		img.onerror = () => wrapper.setText('Failed to load');
+
+		this.loadedCount++;
 	}
 
 	onClose() {
-		if (this.scrollTimeout) {
-			clearTimeout(this.scrollTimeout);
-		}
-		this.loadedAssets.clear();
-		const {contentEl} = this;
-		contentEl.empty();
+		if (this.scrollTimeout) clearTimeout(this.scrollTimeout);
+		if (this.searchTimeout) clearTimeout(this.searchTimeout);
+		this.contentEl.empty();
 	}
 }
 
@@ -389,18 +597,19 @@ class SettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		const { containerEl } = this;
 		containerEl.empty();
 
 		new Setting(containerEl)
 			.setName('Immich URL')
-			.setDesc('Full URL to your immich instance.')
+			.setDesc('Full URL to your Immich instance.')
 			.addText(text => text
 				.setValue(this.plugin.settings.immichUrl)
 				.onChange(async (value) => {
 					this.plugin.settings.immichUrl = normalizeImmichUrl(value);
 					await this.plugin.saveSettings();
 				}));
+
 		new Setting(containerEl)
 			.setName('Immich API key')
 			.setDesc('Obtained from {IMMICH_URL}/user-settings?isOpen=api-keys.')
@@ -410,32 +619,35 @@ class SettingTab extends PluginSettingTab {
 					this.plugin.settings.immichApiKey = value;
 					await this.plugin.saveSettings();
 				}));
+
 		new Setting(containerEl)
-			.setName('Immich album ID')
-			.setDesc('UUID for the `obsidian` album in immich.')
+			.setName('Album ID (optional)')
+			.setDesc('Restrict browsing and search to a specific album UUID. Leave empty to browse the full library.')
 			.addText(text => text
 				.setValue(this.plugin.settings.immichAlbum)
 				.onChange(async (value) => {
-					this.plugin.settings.immichAlbum = value;
+					this.plugin.settings.immichAlbum = value.trim();
 					await this.plugin.saveSettings();
 				}));
+
 		new Setting(containerEl)
-			.setName('Immich album share key')
-			.setDesc('Share key which shows up in the URL of your album.')
-			.addText(text => text
-				.setValue(this.plugin.settings.immichAlbumKey)
+			.setName('Insert mode')
+			.setDesc('Code block stores only the asset ID — the URL and API key are resolved from settings at render time. Full URL embeds everything directly in the note.')
+			.addDropdown(drop => drop
+				.addOption('codeblock', 'Code block (recommended)')
+				.addOption('url', 'Full URL')
+				.setValue(this.plugin.settings.insertMode)
 				.onChange(async (value) => {
-					this.plugin.settings.immichAlbumKey = value;
+					this.plugin.settings.insertMode = value as 'url' | 'codeblock';
 					await this.plugin.saveSettings();
 				}));
+
 		new Setting(containerEl)
 			.setName('Test connection')
-			.setDesc('Validate the connection between obsidian and your immich instance.')
-			.addButton(async (button) => {
-				button.setButtonText("Test connection")
-				button.onClick(async() => {
-					testConnection(this.plugin.settings)
-				})
-			})
+			.setDesc('Validate the connection and API key against your Immich instance.')
+			.addButton(button => {
+				button.setButtonText('Test connection');
+				button.onClick(() => testConnection(this.plugin.settings));
+			});
 	}
 }

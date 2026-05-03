@@ -1,40 +1,111 @@
+/* ── Modal container ──────────────────────────────────────────── */
+
+.obsidian-immich-modal {
+    width: 680px;
+    max-width: 92vw;
+}
+
+.obsidian-immich-modal .modal-content {
+    padding: 0;
+}
+
+/* ── Header ───────────────────────────────────────────────────── */
+
 .obsidian-immich-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    padding: 14px 18px;
     border-bottom: 1px solid var(--background-modifier-border);
-    margin-bottom: 12px;
-    gap: 12px;
 }
 
 .obsidian-immich-title {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.obsidian-immich-count {
+    font-size: 12px;
+    color: var(--text-muted);
     white-space: nowrap;
 }
 
-.obsidian-immich-refresh-button {
-    padding: 6px 12px;
-    border-radius: 4px;
-    background-color: var(--interactive-normal);
-    border: none;
-    cursor: pointer;
-    font-size: 14px;
-    transition: background-color 0.2s;
+/* ── Search bar ───────────────────────────────────────────────── */
+
+.obsidian-immich-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.obsidian-immich-refresh-button:hover {
+.obsidian-immich-search-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 14px;
+}
+
+.obsidian-immich-search-input:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+}
+
+.obsidian-immich-toggle-btn {
+    padding: 5px 12px;
+    border-radius: 4px;
+    background-color: var(--interactive-normal);
+    border: 1px solid var(--background-modifier-border);
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: background-color 0.15s;
+    color: var(--text-normal);
+}
+
+.obsidian-immich-toggle-btn:hover {
     background-color: var(--interactive-hover);
 }
 
-.obsidian-immich-refresh-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+.obsidian-immich-toggle-active {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
 }
+
+/* ── Date row ─────────────────────────────────────────────────── */
+
+.obsidian-immich-date-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    font-size: 13px;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+}
+
+.obsidian-immich-date-input {
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 13px;
+}
+
+.obsidian-immich-date-input:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+}
+
+/* ── Image grid ───────────────────────────────────────────────── */
 
 .obsidian-immich-scroll-container {
     overflow-y: auto;
@@ -52,23 +123,207 @@
 .obsidian-immich-column-content {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 0 4px;
+    gap: 6px;
+    padding: 6px 4px;
 }
 
 .obsidian-immich-overallDiv {
     position: relative;
+    cursor: pointer;
 }
 
-.obsidian-immich-overallDiv img,
-.obsidian-immich-overallDiv video {
+.obsidian-immich-overallDiv img {
     width: 100%;
     height: auto;
     display: block;
+    border-radius: 3px;
+    border: 2px solid transparent;
+    transition: border-color 0.15s, opacity 0.15s;
+    box-sizing: border-box;
+}
+
+.obsidian-immich-overallDiv:hover img {
+    opacity: 0.85;
+}
+
+.obsidian-immich-selected img {
+    border-color: var(--interactive-accent) !important;
 }
 
 .obsidian-immich-loading {
     text-align: center;
     padding: 16px;
     font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* ── Footer ───────────────────────────────────────────────────── */
+
+.obsidian-immich-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 18px;
+    border-top: 1px solid var(--background-modifier-border);
+    gap: 8px;
+}
+
+.obsidian-immich-mode-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.obsidian-immich-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.obsidian-immich-insert-btn {
+    padding: 5px 14px;
+    border-radius: 4px;
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+}
+
+.obsidian-immich-insert-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.obsidian-immich-insert-btn:not(:disabled):hover {
+    opacity: 0.85;
+}
+
+/* ── Embedded renders ─────────────────────────────────────────── */
+
+.immich-embed-wrapper {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+}
+
+.immich-embed-img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 4px;
+}
+
+.immich-embed-video {
+    max-width: 100%;
+    display: block;
+    border-radius: 4px;
+}
+
+/* open-in-immich icon — top-right corner overlay */
+.immich-open-btn {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 4px;
+    color: #fff;
+    opacity: 0;
+    transition: opacity 0.15s;
+    text-decoration: none;
+}
+
+.immich-open-btn svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
+.immich-embed-wrapper:hover .immich-open-btn,
+.immich-slide:hover .immich-open-btn {
+    opacity: 1;
+}
+
+/* ── Slider ───────────────────────────────────────────────────── */
+
+.immich-slider {
+    user-select: none;
+}
+
+.immich-slider-track {
+    position: relative;
+    width: 100%;
+}
+
+.immich-slide {
+    display: none;
+    position: relative;
+}
+
+.immich-slide-active {
+    display: block;
+}
+
+.immich-slider-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 8px 0 4px;
+}
+
+.immich-slider-btn {
+    background: var(--interactive-normal);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s;
+    padding: 0;
+    color: var(--text-normal);
+}
+
+.immich-slider-btn:hover {
+    background: var(--interactive-hover);
+}
+
+.immich-slider-dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.immich-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--background-modifier-border);
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.immich-dot-active {
+    background: var(--interactive-accent);
+}
+
+.immich-slider-counter {
+    font-size: 12px;
+    color: var(--text-muted);
+    min-width: 36px;
+    text-align: center;
 }
