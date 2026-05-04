@@ -229,6 +229,9 @@ async function searchAssets(
 		body: JSON.stringify(body)
 	});
 
+	if (result.status !== 200 || !result.json?.['assets']) {
+		throw new Error('Search failed with status ' + result.status);
+	}
 	const assets = result.json['assets'];
 	return {
 		items: assets['items'] || [],
