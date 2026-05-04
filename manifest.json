@@ -1,7 +1,7 @@
 {
 	"id": "immich",
 	"name": "Immich",
-	"version": "2.0.0",
+	"version": "2.0.1",
 	"minAppVersion": "0.15.0",
 	"description": "Link your Immich images within your vault.",
 	"author": "Talal Abou Haiba",
