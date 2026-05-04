@@ -7,6 +7,8 @@ let _http: any = null;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 let _https: any = null;
 try { _http = require('http'); _https = require('https'); } catch { /* mobile */ }
+// require() may return undefined on mobile without throwing
+if (typeof _http?.request !== 'function') { _http = null; _https = null; }
 
 interface NodeResponse {
 	status: number;
