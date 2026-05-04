@@ -1,21 +1,32 @@
-import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, Modal, Notice, Plugin, PluginSettingTab, Setting, requestUrl } from 'obsidian';
 
-// requestUrl goes through Chrome's network stack which blocks private IPs (PNA restriction).
-// Node.js http/https modules bypass this and work fine for local Immich instances.
+// On desktop, Node.js http/https modules bypass Chrome's PNA restriction (which blocks private IPs).
+// On mobile (Capacitor), Node.js modules don't exist — fall back to Obsidian's requestUrl instead.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const http = require('http');
+let _http: any = null;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const https = require('https');
+let _https: any = null;
+try { _http = require('http'); _https = require('https'); } catch { /* mobile */ }
 
 interface NodeResponse {
 	status: number;
 	json: any;
 }
 
-function nodeRequest(url: string, options: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<NodeResponse> {
+async function nodeRequest(url: string, options: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<NodeResponse> {
+	if (_http === null) {
+		const resp = await requestUrl({
+			url,
+			method: options.method || 'GET',
+			headers: options.headers || {},
+			body: options.body,
+			throw: false,
+		});
+		return { status: resp.status, json: resp.json };
+	}
 	return new Promise((resolve, reject) => {
 		const parsed = new URL(url);
-		const transport = parsed.protocol === 'https:' ? https : http;
+		const transport = parsed.protocol === 'https:' ? _https : _http;
 		const req = transport.request({
 			hostname: parsed.hostname,
 			port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
