@@ -21,10 +21,12 @@ async function nodeRequest(url: string, options: { method?: string; headers?: Re
 			url,
 			method: options.method || 'GET',
 			headers: options.headers || {},
-			body: options.body,
+			...(options.body !== undefined ? { body: options.body } : {}),
 			throw: false,
 		});
-		return { status: resp.status, json: resp.json };
+		let json = null;
+		try { json = resp.json; } catch { /* non-JSON body */ }
+		return { status: resp.status, json };
 	}
 	return new Promise((resolve, reject) => {
 		const parsed = new URL(url);
